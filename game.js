@@ -26,7 +26,6 @@ const keys = {};
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
-  if (k === 'e') eatBerry();
   if (k === 'i') { toggleModal('craftModal', false); toggleModal('invModal', !document.getElementById('invModal').classList.contains('hidden') ? false : true); renderInvGrid(); }
   if (k === 't') { toggleModal('invModal', false); const willShow = document.getElementById('craftModal').classList.contains('hidden'); toggleModal('craftModal', willShow); if (willShow){ renderCraftCategories(); renderCraftDetail(); } }
   if (k === 'f') quickPlace('campfire');
@@ -62,7 +61,6 @@ document.getElementById('btnDay').onclick = () => {
   showMsg(isNight ? `🌙 Nuit — Jour ${dayCount}` : `☀️ Jour ${dayCount}`);
 };
 document.getElementById('btnCampfire').onclick = () => quickPlace('campfire');
-document.getElementById('btnEat').onclick = () => eatBerry();
 document.getElementById('btnWall').onclick = () => quickPlace('wall');
 document.getElementById('closeInv').onclick = () => toggleModal('invModal', false);
 document.getElementById('closeCraft').onclick = () => toggleModal('craftModal', false);
@@ -123,7 +121,7 @@ function renderHotbar(){
     slot.onclick = () => {
       selectedHotbarSlot = i;
       renderHotbar();
-      if (item && !item.isTool && (item.name==='berry' || item.name==='meat')) eatBerry();
+      if (item && !item.isTool && (item.name==='berry' || item.name==='meat')) consumeFood(item.name);
     };
     el.appendChild(slot);
   }
@@ -143,10 +141,15 @@ function renderInvGrid(){
   }
   entries.forEach(([name, val]) => {
     const isTool = ['axe','pickaxe','sword'].includes(name);
+    const isFood = (name === 'berry' || name === 'meat');
     const cell = document.createElement('div');
-    cell.className = 'item-cell';
+    cell.className = 'item-cell' + (isFood ? ' foodCell' : '');
     cell.innerHTML = `<div>${ITEM_ICONS[name]||'❔'}</div>` +
       (isTool ? `<div class="lbl">${val}</div>` : `<div class="cnt">${val}</div>`);
+    if (isFood){
+      cell.title = 'Cliquer pour manger';
+      cell.onclick = () => consumeFood(name);
+    }
     el.appendChild(cell);
   });
 }
@@ -377,21 +380,16 @@ function placeWall(){
   showMsg('Mur placé.');
 }
 
-function eatBerry(){
-  if (inventory.berry > 0){
-    inventory.berry--;
-    player.hunger = Math.min(100, player.hunger + 15);
-    showMsg('Miam, +15 faim.');
-    renderHotbar();
-    renderInvGrid();
-  } else if (inventory.meat > 0){
-    inventory.meat--;
-    player.hunger = Math.min(100, player.hunger + 35);
-    showMsg('Viande grillée, +35 faim.');
+const FOOD_HUNGER = { berry: 15, meat: 35 };
+function consumeFood(name){
+  if (inventory[name] > 0){
+    inventory[name]--;
+    player.hunger = Math.min(100, player.hunger + FOOD_HUNGER[name]);
+    showMsg(name === 'berry' ? 'Miam, +15 faim.' : 'Viande grillée, +35 faim.');
     renderHotbar();
     renderInvGrid();
   } else {
-    showMsg("Pas de nourriture !");
+    showMsg("Tu n'as plus de " + (name === 'berry' ? 'baies' : 'viande') + ".");
   }
 }
 
@@ -916,9 +914,32 @@ document.getElementById('spawnBtn').addEventListener('click', () => {
   document.getElementById('charCreate').classList.add('hidden');
   gameStarted = true;
   last = performance.now(); // évite un grand saut de temps au premier frame
+  // Sur mobile, on tente automatiquement le plein écran + paysage pour plus de confort
+  if (document.body.classList.contains('is-touch')) enterFullscreen();
 });
 document.getElementById('rulesBtn').addEventListener('click', () => toggleModal('rulesModal', true));
 document.getElementById('closeRules').addEventListener('click', () => toggleModal('rulesModal', false));
+
+// ---------- Plein écran ----------
+function enterFullscreen(){
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req){ req.call(el).catch(() => {}); }
+  if (screen.orientation && screen.orientation.lock){
+    screen.orientation.lock('landscape').catch(() => {});
+  }
+}
+function exitFullscreenMode(){
+  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+  if (exit) exit.call(document).catch(() => {});
+}
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+  if (!document.fullscreenElement) enterFullscreen();
+  else exitFullscreenMode();
+});
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fullscreenBtn').textContent = document.fullscreenElement ? '⛝' : '⛶';
+});
 
 // ---------- Main loop ----------
 let last = performance.now();
