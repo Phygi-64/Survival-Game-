@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>Survival Game HTML</title>
+
+</head>
+<body>
+<div id="wrap">
+  <div id="startMenu">
+    <h1>🏝️ SURVIVAL GAME HTML</h1>
+    <p class="tagline">Récolte des ressources, fabrique des outils, mine des minerais et survis sur l'île.</p>
+    <div class="menuBox">
+      <button id="playBtn">▶ JOUER</button>
+      <button id="rulesBtn" class="secondaryBtn">📜 Règles</button>
+    </div>
+  </div>
+
+  <div id="rulesModal" class="modalOverlay hidden">
+    <div class="modalBox">
+      <div class="modalHeader">
+        <span class="title">📜 Règles du jeu</span>
+        <button class="closeBtn" id="closeRules">✕</button>
+      </div>
+      <div class="controlsInfo">
+        <b>ZQSD / Flèches</b> — Se déplacer<br>
+        <b>Clic gauche / bouton d'action</b> — Récolter une ressource<br>
+        <b>I</b> — Inventaire · <b>T</b> — Artisanat<br>
+        <b>E</b> — Manger · <b>F</b> — Feu de camp · <b>R</b> — Mur<br><br>
+        Récolte du bois, de la pierre et des minerais pour fabriquer de meilleurs outils.
+        Surveille ta faim et ta vie, et prépare-toi à survivre à la tombée de la nuit.
+      </div>
+    </div>
+  </div>
+
+  <div id="charCreate" class="hidden">
+    <div class="ccPreviewBox">
+      <canvas id="ccCanvas" width="220" height="300"></canvas>
+      <div class="ccSpawnRow">
+        <button id="spawnBtn">Apparaître</button>
+      </div>
+    </div>
+    <div class="ccPanel">
+      <div class="ccTabs"><span class="ccTab active">Couleur</span></div>
+      <div class="ccSection">
+        <h4>Couleur de peau</h4>
+        <div id="skinSwatches" class="swatchRow"></div>
+      </div>
+      <div class="ccSection">
+        <h4>Couleur des cheveux</h4>
+        <div id="hairSwatches" class="swatchRow"></div>
+      </div>
+      <div class="ccSection">
+        <h4>Couleur du haut</h4>
+        <div id="shirtSwatches" class="swatchRow"></div>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="game" width="960" height="640"></canvas>
+
+  <div id="topBars">
+    <div class="stat hp">
+      <div class="stat-fill" id="hpFill" style="width:100%"></div>
+      <span class="stat-num" id="hpTxt">100</span>
+      <div class="stat-icon">➕</div>
+    </div>
+    <div class="stat hunger">
+      <div class="stat-fill" id="hungerFill" style="width:100%"></div>
+      <span class="stat-num" id="hungerTxt">100</span>
+      <div class="stat-icon">🍗</div>
+    </div>
+  </div>
+
+  <div id="sideLeft" class="sideIcons">
+    <button class="iconBtn" id="btnInventory" title="Inventaire"><span>🎒</span><small>I</small></button>
+    <button class="iconBtn" id="btnCraft" title="Artisanat"><span>🛠️</span><small>T</small></button>
+    <button class="iconBtn" id="btnDay" title="Cycle jour/nuit"><span id="dayIcon">☀️</span><small>M</small></button>
+  </div>
+  <div id="sideRight" class="sideIcons">
+    <button class="iconBtn" id="btnCampfire" title="Poser un feu de camp"><span>🔥</span><small>F</small></button>
+    <button class="iconBtn" id="btnEat" title="Manger"><span>🍖</span><small>E</small></button>
+    <button class="iconBtn" id="btnWall" title="Poser un mur"><span>🧱</span><small>R</small></button>
+  </div>
+
+  <div id="hotbar"></div>
+
+  <div id="invModal" class="modalOverlay hidden">
+    <div class="modalBox">
+      <div class="modalHeader">
+        <span class="title">🎒 Inventaire</span>
+        <button class="closeBtn" id="closeInv">✕</button>
+      </div>
+      <div id="invGrid" class="itemGrid"></div>
+    </div>
+  </div>
+
+  <div id="craftModal" class="modalOverlay hidden">
+    <div class="modalBox" style="min-width:560px;">
+      <div class="modalHeader">
+        <span class="title">🛠️ Artisanat</span>
+        <button class="closeBtn" id="closeCraft">✕</button>
+      </div>
+      <div id="craftCategories" class="craftCats"></div>
+      <div class="craftDetail">
+        <div id="craftChain" class="tierChain"></div>
+        <div id="craftAction" class="craftAction"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dayinfo">
+    <span id="dayLabel">Jour 1</span> · <span id="phaseLabel">☀️ Jour</span>
+  </div>
+
+  <div id="msg"></div>
+
+  <div id="help">
+    <b>Déplacement:</b> ZQSD / Flèches<br>
+    <b>Récolter:</b> Clic gauche près d'une ressource<br>
+    <b>I:</b> Inventaire · <b>T:</b> Artisanat<br>
+    <b>E:</b> Manger · <b>F:</b> Feu de camp · <b>R:</b> Mur<br>
+    <b>Minerais:</b> charbon, cuivre, fer (pioche pierre) → or, diamant (pioche fer)
+  </div>
+
+  <div id="gameover">
+    <h1>💀 Tu es mort</h1>
+    <p id="goStats"></p>
+    <button onclick="location.reload()">Recommencer</button>
+  </div>
+
+  <div id="mobileControls">
+    <div id="joystickBase">
+      <div id="joystickKnob"></div>
+    </div>
+    <button id="actionBtn">✋</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
