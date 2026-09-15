@@ -11,7 +11,7 @@ function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
 // ---------- Player ----------
 const player = {
-  x: WORLD_W/2, y: WORLD_H/2,
+  x: WORLD_W*0.32, y: WORLD_H*0.32,
   w: 24, h: 24,
   speed: 170, // pixels par seconde
   hp: 100, maxHp: 100,
@@ -76,10 +76,10 @@ const ITEM_ICONS = {
   campfire:'🔥', wall:'🧱',
   axe:'🪓', pickaxe:'⛏️', sword:'🗡️'
 };
-// Tiers: 0 = aucun, 1 = basique (pierre), 2 = fer, 3 = or/diamant
-const TOOL_TIER_NAMES = { axe:['—','Bois','Fer','Diamant'], pickaxe:['—','Pierre','Fer','Diamant'], sword:['—','Bois','Fer','Or','Diamant'] };
+// Tiers: 0 = caillou/mains nues, 1 = basique (pierre), 2 = fer, 3 = or/diamant
+const TOOL_TIER_NAMES = { axe:['Mains nues','Bois','Fer','Diamant'], pickaxe:['Caillou','Pierre','Fer','Diamant'], sword:['Mains nues','Bois','Fer','Or','Diamant'] };
 let tools = { axeTier:0, pickaxeTier:0, swordTier:0 };
-const SWORD_DMG = [6, 12, 20, 26, 38]; // index = tier
+const SWORD_DMG = [4, 12, 20, 26, 38]; // index = tier
 let placedCampfires = [];
 
 function addItem(name, qty){
@@ -88,15 +88,23 @@ function addItem(name, qty){
   renderInvGrid();
 }
 
+// Icône à afficher pour un outil selon son palier (le palier 0 de la pioche est un simple caillou)
+function toolIcon(tool, tier){
+  if (tool === 'pickaxe' && tier === 0) return '🪨';
+  return ITEM_ICONS[tool];
+}
+
 // Ordre d'affichage : outils d'abord, puis ressources
 const HOTBAR_ORDER = ['axe','pickaxe','sword','wood','stone','coal','copper','iron','gold','diamond','berry','meat','fiber'];
 let selectedHotbarSlot = 0;
 
 function getHotbarItems(){
   const items = [];
-  ['axe','pickaxe','sword'].forEach(tool => {
+  // La pioche (même au palier "Caillou") est toujours affichée : c'est l'outil de base
+  items.push({ name:'pickaxe', isTool:true, tierLabel: TOOL_TIER_NAMES.pickaxe[tools.pickaxeTier], icon: toolIcon('pickaxe', tools.pickaxeTier) });
+  ['axe','sword'].forEach(tool => {
     const tier = tools[tool+'Tier'];
-    if (tier > 0) items.push({ name:tool, isTool:true, tierLabel: TOOL_TIER_NAMES[tool][tier] });
+    if (tier > 0) items.push({ name:tool, isTool:true, tierLabel: TOOL_TIER_NAMES[tool][tier], icon: toolIcon(tool, tier) });
   });
   Object.keys(inventory).forEach(k => {
     if (inventory[k] > 0) items.push({ name:k, isTool:false, qty: inventory[k] });
@@ -113,7 +121,7 @@ function renderHotbar(){
     slot.className = 'hotbar-slot' + (i===selectedHotbarSlot ? ' selected' : '');
     const item = items[i];
     if (item){
-      slot.innerHTML = `<span class="num">${i+1}</span><div>${ITEM_ICONS[item.name]||'❔'}</div>` +
+      slot.innerHTML = `<span class="num">${i+1}</span><div>${item.icon || ITEM_ICONS[item.name] || '❔'}</div>` +
         (item.isTool ? `<span class="tierLbl">${item.tierLabel}</span>` : `<span class="cnt">${item.qty}</span>`);
     } else {
       slot.innerHTML = `<span class="num">${i+1}</span>`;
@@ -131,20 +139,21 @@ function renderInvGrid(){
   const el = document.getElementById('invGrid');
   el.innerHTML = '';
   const entries = Object.entries(inventory).filter(([k,v]) => v > 0);
-  ['axe','pickaxe','sword'].forEach(tool => {
+  entries.push(['pickaxe', TOOL_TIER_NAMES.pickaxe[tools.pickaxeTier], toolIcon('pickaxe', tools.pickaxeTier)]);
+  ['axe','sword'].forEach(tool => {
     const tier = tools[tool+'Tier'];
-    if (tier > 0) entries.push([tool, TOOL_TIER_NAMES[tool][tier]]);
+    if (tier > 0) entries.push([tool, TOOL_TIER_NAMES[tool][tier], toolIcon(tool, tier)]);
   });
   if (entries.length === 0){
     el.innerHTML = '<div class="invEmpty">Ton sac est vide. Récolte des ressources sur l\'île !</div>';
     return;
   }
-  entries.forEach(([name, val]) => {
+  entries.forEach(([name, val, iconOverride]) => {
     const isTool = ['axe','pickaxe','sword'].includes(name);
     const isFood = (name === 'berry' || name === 'meat');
     const cell = document.createElement('div');
     cell.className = 'item-cell' + (isFood ? ' foodCell' : '');
-    cell.innerHTML = `<div>${ITEM_ICONS[name]||'❔'}</div>` +
+    cell.innerHTML = `<div>${iconOverride || ITEM_ICONS[name] || '❔'}</div>` +
       (isTool ? `<div class="lbl">${val}</div>` : `<div class="cnt">${val}</div>`);
     if (isFood){
       cell.title = 'Cliquer pour manger';
@@ -165,6 +174,23 @@ function isAnyModalOpen(){
 
 // ---------- Minerais ----------
 // hp: coups nécessaires, reqTier: palier de pioche minimum, color/dot: rendu du filon
+// ---------- Biomes ----------
+// La carte est divisée en 4 grandes zones, chacune avec son propre style et ses propres ressources
+const HALF_W = WORLD_W/2, HALF_H = WORLD_H/2;
+const BIOME_BOUNDS = {
+  forest:   { x1:0,      y1:0,      x2:HALF_W,   y2:HALF_H,   color:'#3a7d3a' },
+  mountain: { x1:HALF_W, y1:0,      x2:WORLD_W,  y2:HALF_H,   color:'#8c8577' },
+  desert:   { x1:0,      y1:HALF_H, x2:HALF_W,   y2:WORLD_H,  color:'#d9c27a' },
+  coast:    { x1:HALF_W, y1:HALF_H, x2:WORLD_W,  y2:WORLD_H,  color:'#3a6ea5' }
+};
+function biomeAt(x, y){
+  if (x < HALF_W) return y < HALF_H ? 'forest' : 'desert';
+  return y < HALF_H ? 'mountain' : 'coast';
+}
+function randIn(b, margin){
+  return { x: rand(b.x1+margin, b.x2-margin), y: rand(b.y1+margin, b.y2-margin) };
+}
+
 const ORES = {
   coal:    { name:'Charbon', hp:2, reqTier:1, color:'#5a5a5a', dot:'#111' },
   copper:  { name:'Cuivre',  hp:3, reqTier:1, color:'#8f9aa0', dot:'#c07a3a' },
@@ -177,40 +203,43 @@ const ORES = {
 let resources = [];
 function spawnResources(){
   resources = [];
-  for (let i=0;i<70;i++){
-    resources.push({
-      type:'tree', x:rand(60,WORLD_W-60), y:rand(60,WORLD_H-60),
-      r:18, hp:3, wobble:0
-    });
-  }
-  for (let i=0;i<45;i++){
-    resources.push({
-      type:'rock', x:rand(60,WORLD_W-60), y:rand(60,WORLD_H-60),
-      r:16, hp:4, wobble:0
-    });
-  }
-  for (let i=0;i<35;i++){
-    resources.push({
-      type:'bush', x:rand(60,WORLD_W-60), y:rand(60,WORLD_H-60),
-      r:12, hp:1, wobble:0, berries: Math.random()<0.9
-    });
-  }
-  for (let i=0;i<25;i++){
-    resources.push({
-      type:'grass', x:rand(60,WORLD_W-60), y:rand(60,WORLD_H-60),
-      r:10, hp:1, wobble:0
-    });
-  }
-  // Gisements de minerai (nécessitent une pioche de palier suffisant)
-  const oreCounts = { coal:26, copper:22, iron:16, gold:10, diamond:6 };
-  Object.entries(oreCounts).forEach(([ore, count]) => {
-    for (let i=0;i<count;i++){
-      resources.push({
-        type:'ore', ore, x:rand(60,WORLD_W-60), y:rand(60,WORLD_H-60),
-        r:16, hp:ORES[ore].hp, wobble:0
-      });
-    }
+  const M = 70; // marge par rapport aux bords de biome
+
+  // --- Forêt : bois abondant, quelques rochers et minerais de surface ---
+  const F = BIOME_BOUNDS.forest;
+  for (let i=0;i<42;i++){ const p=randIn(F,M); resources.push({type:'tree', x:p.x, y:p.y, r:18, hp:3, wobble:0}); }
+  for (let i=0;i<24;i++){ const p=randIn(F,M); resources.push({type:'bush', x:p.x, y:p.y, r:12, hp:1, wobble:0, berries: Math.random()<0.9}); }
+  for (let i=0;i<20;i++){ const p=randIn(F,M); resources.push({type:'grass', x:p.x, y:p.y, r:10, hp:1, wobble:0}); }
+  for (let i=0;i<10;i++){ const p=randIn(F,M); resources.push({type:'rock', x:p.x, y:p.y, r:16, hp:4, wobble:0}); }
+  for (let i=0;i<10;i++){ const p=randIn(F,M); resources.push({type:'ore', ore:'coal', x:p.x, y:p.y, r:16, hp:ORES.coal.hp, wobble:0}); }
+
+  // --- Montagne : peu d'arbres, beaucoup de pierre et la majorité des minerais ---
+  const Mt = BIOME_BOUNDS.mountain;
+  for (let i=0;i<8;i++){ const p=randIn(Mt,M); resources.push({type:'tree', x:p.x, y:p.y, r:18, hp:3, wobble:0}); }
+  for (let i=0;i<30;i++){ const p=randIn(Mt,M); resources.push({type:'rock', x:p.x, y:p.y, r:16, hp:4, wobble:0}); }
+  const mountainOres = { coal:16, copper:20, iron:16, gold:9, diamond:5 };
+  Object.entries(mountainOres).forEach(([ore, count]) => {
+    for (let i=0;i<count;i++){ const p=randIn(Mt,M); resources.push({type:'ore', ore, x:p.x, y:p.y, r:16, hp:ORES[ore].hp, wobble:0}); }
   });
+
+  // --- Désert : cactus (fibre) et pierre, peu d'eau/verdure ---
+  const D = BIOME_BOUNDS.desert;
+  for (let i=0;i<20;i++){ const p=randIn(D,M); resources.push({type:'cactus', x:p.x, y:p.y, r:14, hp:2, wobble:0}); }
+  for (let i=0;i<16;i++){ const p=randIn(D,M); resources.push({type:'rock', x:p.x, y:p.y, r:16, hp:4, wobble:0}); }
+  for (let i=0;i<6;i++){ const p=randIn(D,M); resources.push({type:'ore', ore:'copper', x:p.x, y:p.y, r:16, hp:ORES.copper.hp, wobble:0}); }
+  for (let i=0;i<4;i++){ const p=randIn(D,M); resources.push({type:'ore', ore:'gold', x:p.x, y:p.y, r:16, hp:ORES.gold.hp, wobble:0}); }
+
+  // --- Côte / îles : ressources éparses sur la bande de terre au milieu de l'eau ---
+  const C = BIOME_BOUNDS.coast;
+  const islandCx = (C.x1+C.x2)/2, islandCy = (C.y1+C.y2)/2, islandR = Math.min(C.x2-C.x1, C.y2-C.y1)*0.32;
+  function randOnIsland(){
+    const ang = rand(0, Math.PI*2), r = rand(0, islandR-30);
+    return { x: islandCx + Math.cos(ang)*r, y: islandCy + Math.sin(ang)*r };
+  }
+  for (let i=0;i<14;i++){ const p=randOnIsland(); resources.push({type:'tree', x:p.x, y:p.y, r:18, hp:3, wobble:0}); }
+  for (let i=0;i<12;i++){ const p=randOnIsland(); resources.push({type:'rock', x:p.x, y:p.y, r:16, hp:4, wobble:0}); }
+  for (let i=0;i<8;i++){ const p=randOnIsland(); resources.push({type:'bush', x:p.x, y:p.y, r:12, hp:1, wobble:0, berries:true}); }
+  for (let i=0;i<3;i++){ const p=randOnIsland(); resources.push({type:'ore', ore:'iron', x:p.x, y:p.y, r:16, hp:ORES.iron.hp, wobble:0}); }
 }
 spawnResources();
 
@@ -328,13 +357,25 @@ function renderCraftDetail(){
   const cat = CRAFT_CATEGORIES[selectedCategory];
   const chainEl = document.getElementById('craftChain');
   chainEl.innerHTML = '';
+  // Le premier palier non possédé indique jusqu'où la chaîne est "dévoilée" :
+  // les paliers suivants restent masqués (mystère) tant qu'on n'a pas obtenu celui-ci.
+  let firstUnowned = cat.chain.findIndex(id => !(RECIPE_BY_ID[id].already && RECIPE_BY_ID[id].already()));
+  if (firstUnowned === -1) firstUnowned = cat.chain.length - 1;
+
   cat.chain.forEach((id, i) => {
     const r = RECIPE_BY_ID[id];
     const owned = r.already && r.already();
+    const revealed = i <= firstUnowned;
     const node = document.createElement('div');
-    node.className = 'tierNode' + (owned ? ' owned' : '') + (id===selectedNodeId ? ' active' : '');
-    node.innerHTML = `<span class="icon">${r.icon}</span>`;
-    node.onclick = () => { selectedNodeId = id; renderCraftDetail(); };
+    if (revealed){
+      node.className = 'tierNode' + (owned ? ' owned' : '') + (id===selectedNodeId ? ' active' : '');
+      node.innerHTML = `<span class="icon">${r.icon}</span>`;
+      node.onclick = () => { selectedNodeId = id; renderCraftDetail(); };
+    } else {
+      node.className = 'tierNode locked';
+      node.innerHTML = `<span class="icon">🔒</span>`;
+      node.onclick = () => showMsg('Débloque d\'abord le palier précédent pour révéler celui-ci.');
+    }
     chainEl.appendChild(node);
     if (i < cat.chain.length-1){
       const conn = document.createElement('div');
@@ -589,6 +630,15 @@ function gatherResource(res){
   } else if (res.type === 'grass'){
     addItem('fiber', 1);
     respawnResource(res, 'grass', 8000);
+  } else if (res.type === 'cactus'){
+    res.hp--;
+    res.wobble = 6;
+    if (res.hp <= 0){
+      addItem('fiber', 3);
+      respawnResource(res, 'cactus', 20000);
+    } else {
+      addItem('fiber', 1);
+    }
   }
 }
 
@@ -597,7 +647,7 @@ function respawnResource(res, type, delay){
   setTimeout(() => {
     resources.push({
       type, x: res.x, y: res.y, r: res.r,
-      hp: type==='tree'?3:4, wobble:0
+      hp: type==='tree'?3 : type==='cactus'?2 : 4, wobble:0
     });
   }, delay);
 }
@@ -645,9 +695,32 @@ function updateEnemies(dt){
 }
 
 // ---------- Draw ----------
+function fillWorldRect(x1, y1, x2, y2, color){
+  const sx1 = Math.max(0, x1-camera.x), sy1 = Math.max(0, y1-camera.y);
+  const sx2 = Math.min(W, x2-camera.x), sy2 = Math.min(H, y2-camera.y);
+  if (sx2 > sx1 && sy2 > sy1){
+    ctx.fillStyle = color;
+    ctx.fillRect(sx1, sy1, sx2-sx1, sy2-sy1);
+  }
+}
+
 function drawBackground(){
-  ctx.fillStyle = '#3a7d3a';
-  ctx.fillRect(0,0,W,H);
+  // Les 4 biomes de la carte
+  fillWorldRect(BIOME_BOUNDS.forest.x1, BIOME_BOUNDS.forest.y1, BIOME_BOUNDS.forest.x2, BIOME_BOUNDS.forest.y2, BIOME_BOUNDS.forest.color);
+  fillWorldRect(BIOME_BOUNDS.mountain.x1, BIOME_BOUNDS.mountain.y1, BIOME_BOUNDS.mountain.x2, BIOME_BOUNDS.mountain.y2, BIOME_BOUNDS.mountain.color);
+  fillWorldRect(BIOME_BOUNDS.desert.x1, BIOME_BOUNDS.desert.y1, BIOME_BOUNDS.desert.x2, BIOME_BOUNDS.desert.y2, BIOME_BOUNDS.desert.color);
+  fillWorldRect(BIOME_BOUNDS.coast.x1, BIOME_BOUNDS.coast.y1, BIOME_BOUNDS.coast.x2, BIOME_BOUNDS.coast.y2, BIOME_BOUNDS.coast.color);
+
+  // Île sablonneuse au milieu du biome côtier
+  const C = BIOME_BOUNDS.coast;
+  const islandCx = (C.x1+C.x2)/2, islandCy = (C.y1+C.y2)/2, islandR = Math.min(C.x2-C.x1, C.y2-C.y1)*0.32;
+  const isP = toScreen(islandCx, islandCy);
+  ctx.fillStyle = '#e0c98a';
+  ctx.beginPath();
+  ctx.arc(isP.x, isP.y, islandR, 0, Math.PI*2);
+  ctx.fill();
+
+  // Grille discrète par-dessus, pour le repère visuel
   ctx.strokeStyle = 'rgba(0,0,0,0.06)';
   const gridSize = 64;
   const offX = -camera.x % gridSize;
@@ -673,6 +746,11 @@ function drawResources(){
       ctx.beginPath();
       ctx.arc(p.x, p.y-18, 20, 0, Math.PI*2);
       ctx.fill();
+    } else if (r.type === 'cactus'){
+      ctx.fillStyle = '#3a8a5a';
+      ctx.fillRect(p.x-6, p.y-24, 12, 32);
+      ctx.fillRect(p.x-14, p.y-14, 10, 16);
+      ctx.fillRect(p.x+4, p.y-18, 10, 18);
     } else if (r.type === 'rock'){
       ctx.fillStyle = '#888';
       ctx.beginPath();
