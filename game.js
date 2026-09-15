@@ -556,9 +556,14 @@ function updatePlayer(dtSec){
 
   if (player.attackCooldown > 0) player.attackCooldown -= dtSec*1000;
 
-  if (mouse.down && player.attackCooldown <= 0){
-    tryInteract();
-    player.attackCooldown = 220;
+  if (mouse.down){
+    harvestTarget = findNearestResource();
+    if (player.attackCooldown <= 0 && harvestTarget){
+      gatherResource(harvestTarget);
+      player.attackCooldown = 220;
+    }
+  } else {
+    harvestTarget = null;
   }
 
   if (player.hp <= 0 && !player.dead){
@@ -568,16 +573,18 @@ function updatePlayer(dtSec){
   }
 }
 
-function tryInteract(){
-  // récolte la ressource la plus proche du joueur (fonctionne au clic comme au doigt)
+let harvestTarget = null;
+function findNearestResource(){
   let res = null, minD = 60;
   resources.forEach(r => {
     const d = dist(r, player);
     if (d < minD){ minD = d; res = r; }
   });
-  if (res){
-    gatherResource(res);
-  }
+  return res;
+}
+function tryInteract(){
+  const res = findNearestResource();
+  if (res) gatherResource(res);
 }
 
 function gatherResource(res){
@@ -593,8 +600,7 @@ function gatherResource(res){
       addItem('wood', amount);
     }
   } else if (res.type === 'rock'){
-    if (tools.pickaxeTier < 1) { showMsg('Il faut une pioche pour miner la pierre.'); return; }
-    amount = tools.pickaxeTier >= 2 ? 3 : 2;
+    amount = tools.pickaxeTier >= 2 ? 3 : (tools.pickaxeTier >= 1 ? 2 : 1);
     res.hp--;
     res.wobble = 6;
     if (res.hp <= 0){
@@ -734,6 +740,35 @@ function drawBackground(){
 }
 
 function toScreen(x,y){ return { x: x - camera.x, y: y - camera.y }; }
+
+// Robustesse max (nombre de coups) selon le type de ressource, utilisé pour le pourcentage de la barre
+function getMaxHp(res){
+  if (res.type === 'tree') return 3;
+  if (res.type === 'cactus') return 2;
+  if (res.type === 'rock') return 4;
+  if (res.type === 'ore') return ORES[res.ore].hp;
+  return 1; // buisson, herbe
+}
+
+function drawHarvestBar(){
+  if (!harvestTarget || !resources.includes(harvestTarget)) return;
+  const p = toScreen(harvestTarget.x, harvestTarget.y);
+  if (p.x < -50 || p.x > W+50 || p.y < -50 || p.y > H+50) return;
+  const maxHp = getMaxHp(harvestTarget);
+  const pct = Math.max(0, Math.min(100, Math.round(((maxHp - harvestTarget.hp) / maxHp) * 100)));
+  const barW = 50, barH = 9, bx = p.x - barW/2, by = p.y - 42;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(bx, by, barW, barH);
+  ctx.fillStyle = pct >= 100 ? '#ffcf7a' : '#5fbf4f';
+  ctx.fillRect(bx, by, barW*(pct/100), barH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, barW, barH);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(pct + '%', p.x, by - 3);
+}
 
 function drawResources(){
   resources.forEach(r => {
@@ -1039,6 +1074,7 @@ function loop(now){
   drawBackground();
   drawWalls();
   drawResources();
+  drawHarvestBar();
   drawCampfires();
   drawEnemies();
   drawPlayer();
